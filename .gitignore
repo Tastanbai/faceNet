@@ -1,0 +1,6 @@
+myenv/
+*.pyc
+__pycache__/
+embeddings/
+images/
+requirements.txt
