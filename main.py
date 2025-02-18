@@ -621,7 +621,7 @@ async def store_face(
     try:
         conn = await get_db_connection()
         async with conn.cursor() as cursor:
-            await cursor.execute("SELECT id FROM faces WHERE emb_hash = %s", (emb_hash,))
+            await cursor.execute("SELECT id FROM faceNet WHERE emb_hash = %s", (emb_hash,))
             duplicate = await cursor.fetchone()
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Ошибка при запросе к БД: {str(e)}")
@@ -646,7 +646,7 @@ async def store_face(
         conn = await get_db_connection()
         async with conn.cursor() as cursor:
             query = """
-            INSERT INTO faces (patient_id, hospital_id, branch_id, palata_id, image_path, emb_path, emb_hash)
+            INSERT INTO faceNet (patient_id, hospital_id, branch_id, palata_id, image_path, emb_path, emb_hash)
             VALUES (%s, %s, %s, %s, %s, %s, %s)
             """
             await cursor.execute(query, (
@@ -671,18 +671,15 @@ async def store_face(
 async def compare_face(file: UploadFile = File(...)):
     """
     Принимает изображение, вычисляет эмбеддинг и сравнивает с данными из БД.
-    Если такое же изображение уже использовалось, сразу возвращает False.
     """
     start_time = time.perf_counter()
 
-    # Читаем изображение
     contents = await file.read()
     nparr = np.frombuffer(contents, np.uint8)
     img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
     if img is None:
         raise HTTPException(status_code=400, detail="Невозможно прочитать изображение.")
 
-    # Обнаружение лица
     detection_results = detector.detect_faces(img)
     if not detection_results:
         raise HTTPException(status_code=404, detail="Лицо не обнаружено.")
@@ -696,29 +693,16 @@ async def compare_face(file: UploadFile = File(...)):
         raise HTTPException(status_code=500, detail="Не удалось вычислить эмбеддинг.")
     query_embedding = embeddings[0]
 
-    # Вычисляем хэш эмбеддинга
     query_hash = calculate_hash(query_embedding)
 
-    # Проверяем в базе, есть ли такой же хэш
     try:
         conn = await get_db_connection()
         async with conn.cursor(aiomysql.DictCursor) as cursor:
-            await cursor.execute("SELECT * FROM faces WHERE emb_hash = %s", (query_hash,))
+            await cursor.execute("SELECT * FROM faceNet WHERE emb_hash = %s", (query_hash,))
             duplicate = await cursor.fetchone()
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Ошибка при получении данных из базы: {str(e)}")
     finally:
         conn.close()
 
-    if duplicate:
-        return JSONResponse(content={
-            "status": False,
-            "message": "Такое же изображение уже использовалось.",
-            "compare_time": time.perf_counter() - start_time
-        })
-
-    return JSONResponse(content={
-        "status": True,
-        "message": "Изображение уникальное.",
-        "compare_time": time.perf_counter() - start_time
-    })
+    return JSONResponse(content={"status": not bool(duplicate), "message": "Изображение проверено."})
