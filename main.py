@@ -671,15 +671,18 @@ async def store_face(
 async def compare_face(file: UploadFile = File(...)):
     """
     Принимает изображение, вычисляет эмбеддинг и сравнивает с данными из БД.
+    Возвращает информацию о лучшем совпадении, если таковое найдено.
     """
     start_time = time.perf_counter()
 
+    # Читаем изображение
     contents = await file.read()
     nparr = np.frombuffer(contents, np.uint8)
     img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
     if img is None:
         raise HTTPException(status_code=400, detail="Невозможно прочитать изображение.")
 
+    # Обнаружение лица
     detection_results = detector.detect_faces(img)
     if not detection_results:
         raise HTTPException(status_code=404, detail="Лицо не обнаружено.")
@@ -688,21 +691,64 @@ async def compare_face(file: UploadFile = File(...)):
     x, y, width, height = face_data['box']
     face_img = img[y:y+height, x:x+width]
 
+    # Вычисляем эмбеддинг
     embeddings = embedder.embeddings([face_img])
     if embeddings.size == 0:
         raise HTTPException(status_code=500, detail="Не удалось вычислить эмбеддинг.")
     query_embedding = embeddings[0]
 
+    # Вычисляем хэш эмбеддинга
     query_hash = calculate_hash(query_embedding)
 
     try:
         conn = await get_db_connection()
         async with conn.cursor(aiomysql.DictCursor) as cursor:
+            # Проверяем, есть ли уже такой эмбеддинг в базе
             await cursor.execute("SELECT * FROM faceNet WHERE emb_hash = %s", (query_hash,))
             duplicate = await cursor.fetchone()
+
+            if duplicate:
+                return JSONResponse(content={
+                    "status": False,
+                    "message": "Такое же изображение уже использовалось.",
+                    "compare_time": time.perf_counter() - start_time
+                })
+
+            # Получаем все эмбеддинги из базы
+            await cursor.execute("SELECT * FROM faceNet")
+            rows = await cursor.fetchall()
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Ошибка при получении данных из базы: {str(e)}")
     finally:
         conn.close()
 
-    return JSONResponse(content={"status": not bool(duplicate), "message": "Изображение проверено."})
+    best_similarity = -1.0
+    best_match = None
+
+    for row in rows:
+        emb_path = row["emb_path"]
+        if not os.path.exists(emb_path):
+            continue
+        stored_embedding = np.load(emb_path)
+        similarity = cosine_similarity(query_embedding, stored_embedding)
+        if similarity > best_similarity:
+            best_similarity = similarity
+            best_match = row
+
+    compare_time = time.perf_counter() - start_time
+    match_percentage = float(best_similarity * 100)
+
+    if best_similarity >= SIMILARITY_THRESHOLD and best_match is not None:
+        return JSONResponse(content={
+            "status": True,
+            "match_details": best_match,
+            "match_percentage": match_percentage,
+            "compare_time": compare_time
+        })
+    else:
+        return JSONResponse(content={
+            "status": False,
+            "message": "Совпадений не найдено.",
+            "match_percentage": match_percentage,
+            "compare_time": compare_time
+        })
