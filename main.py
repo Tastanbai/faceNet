@@ -532,6 +532,7 @@ from mtcnn import MTCNN
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.responses import JSONResponse
 from keras_facenet import FaceNet
+import datetime
 
 app = FastAPI()
 
@@ -578,7 +579,6 @@ async def get_db_connection():
         autocommit=True
     )
     return conn
-
 @app.post("/store")
 async def store_face(
     patient_id: str = Form(...),
@@ -669,10 +669,6 @@ async def store_face(
 
 @app.post("/compare")
 async def compare_face(file: UploadFile = File(...)):
-    """
-    Принимает изображение, вычисляет эмбеддинг и сравнивает с данными из БД.
-    Возвращает информацию о лучшем совпадении, если таковое найдено.
-    """
     start_time = time.perf_counter()
 
     # Читаем изображение
@@ -715,7 +711,7 @@ async def compare_face(file: UploadFile = File(...)):
                 })
 
             # Получаем все эмбеддинги из базы
-            await cursor.execute("SELECT * FROM faceNet")
+            await cursor.execute("SELECT emb_path FROM faceNet")
             rows = await cursor.fetchall()
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Ошибка при получении данных из базы: {str(e)}")
@@ -723,7 +719,6 @@ async def compare_face(file: UploadFile = File(...)):
         conn.close()
 
     best_similarity = -1.0
-    best_match = None
 
     for row in rows:
         emb_path = row["emb_path"]
@@ -733,15 +728,13 @@ async def compare_face(file: UploadFile = File(...)):
         similarity = cosine_similarity(query_embedding, stored_embedding)
         if similarity > best_similarity:
             best_similarity = similarity
-            best_match = row
 
     compare_time = time.perf_counter() - start_time
     match_percentage = float(best_similarity * 100)
 
-    if best_similarity >= SIMILARITY_THRESHOLD and best_match is not None:
+    if best_similarity >= SIMILARITY_THRESHOLD:
         return JSONResponse(content={
             "status": True,
-            "match_details": best_match,
             "match_percentage": match_percentage,
             "compare_time": compare_time
         })
