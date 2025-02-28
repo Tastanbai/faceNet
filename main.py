@@ -1103,7 +1103,7 @@ app.include_router(auth_router)
 app.include_router(register_router)
 
 DB_CONFIG = {
-    "host": "face.tabet-kitap.kz",
+    "host": "facenet.tabet-kitap.kz",
     "user": "fastapi_user",
     "password": "secure_password",
     "database": "face_db",
@@ -1278,7 +1278,11 @@ async def check_permission(user: dict, request: Request):
         return
     raise HTTPException(status_code=403, detail=f"Нет доступа к API {api_name}")
 
-@app.post("/process-patient")
+@app.get("/")
+def root():
+    return {"message": "FastAPI is running"}
+
+@app.post("/process-patient/")
 async def process_patient(
     request: Request,
     patient_id: str = Form(...),

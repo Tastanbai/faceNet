@@ -9,7 +9,7 @@ import json
 router = APIRouter()
 
 DB_CONFIG = {
-    "host": "face.tabet-kitap.kz",
+    "host": "facenet.tabet-kitap.kz",
     "user": "fastapi_user",
     "password": "secure_password",
     "database": "face_db",

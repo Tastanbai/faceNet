@@ -12,7 +12,7 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 2
 router = APIRouter()
 
 DB_CONFIG = {
-    "host": "face.tabet-kitap.kz",
+    "host": "facenet.tabet-kitap.kz",
     "user": "fastapi_user",
     "password": "secure_password",
     "database": "face_db",
