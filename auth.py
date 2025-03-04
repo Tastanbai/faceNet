@@ -1,22 +1,29 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Form
+import json
+from fastapi import APIRouter, Depends, HTTPException, Request, status, Form
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 import mysql.connector
 from passlib.context import CryptContext
 from datetime import datetime, timedelta
 import jwt
 
-SECRET_KEY = "your_secret_key"
-ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 2
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
+# Получаем настройки из переменных окружения
+SECRET_KEY = os.getenv("SECRET_KEY")
+ALGORITHM = os.getenv("ALGORITHM")
+ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES"))
 
 router = APIRouter()
 
 DB_CONFIG = {
-    "host": "facenet.tabet-kitap.kz",
-    "user": "fastapi_user",
-    "password": "secure_password",
-    "database": "face_db",
-    "port": 3306
+    "host": os.getenv("DB_HOST"),
+    "user": os.getenv("DB_USER"),
+    "password": os.getenv("DB_PASSWORD"),
+    "database": os.getenv("DB_DATABASE"),
+    "port": int(os.getenv("DB_PORT")),
 }
 
 # Хеширование паролей
@@ -84,3 +91,18 @@ def get_current_user(token: str = Depends(oauth2_scheme)):
 
     except jwt.InvalidTokenError:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Недействительный токен")
+
+
+# Проверка прав
+async def check_permission(user: dict, request: Request):
+    allowed_api_str = user.get("allowed_api", "[]")
+    try:
+        allowed_api = json.loads(allowed_api_str)
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=500, detail="Ошибка в формате allowed_api")
+
+    api_name = request.scope["path"].lstrip("/")
+    if "*" in allowed_api or api_name in allowed_api:
+        return
+    raise HTTPException(status_code=403, detail=f"Нет доступа к API {api_name}")
+

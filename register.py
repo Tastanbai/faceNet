@@ -5,18 +5,19 @@ import mysql.connector
 from auth import get_current_user, hash_password
 from enum import Enum
 import json
+import os
 
 router = APIRouter()
 
 DB_CONFIG = {
-    "host": "facenet.tabet-kitap.kz",
-    "user": "fastapi_user",
-    "password": "secure_password",
-    "database": "face_db",
-    "port": 3306
+    "host": os.getenv("DB_HOST"),
+    "user": os.getenv("DB_USER"),
+    "password": os.getenv("DB_PASSWORD"),
+    "database": os.getenv("DB_DATABASE"),
+    "port": int(os.getenv("DB_PORT")),
 }
 
-# ✅ Автоматическое определение API на основе зарегистрированных маршрутов
+# Автоматическое определение API на основе зарегистрированных маршрутов
 class AvailableAPIs(str, Enum):
     compare_face = "compare-face"
     compare_face_qr = "compare-face-qr"
@@ -28,19 +29,19 @@ class RegisterUserSchema(BaseModel):
     username: str
     password: str
     is_admin: bool = False
-    allowed_api: List[AvailableAPIs]  # ✅ Здесь создается выпадающий список
+    allowed_api: List[AvailableAPIs]  # Здесь создается выпадающий список
 
 @router.post("/register")
 async def register_user(
     username: str = Form(...),
     password: str = Form(...),
     is_admin: bool = Form(False),  # По умолчанию обычный пользователь
-    allowed_api: List[AvailableAPIs] = Form(...),  # ✅ Выпадающий список API
+    allowed_api: List[AvailableAPIs] = Form(...),  # Выпадающий список API
     current_user: dict = Depends(get_current_user)
 ):
     """ Регистрация пользователя с выбором доступных API """
 
-    # ✅ Преобразуем API в JSON-строку перед сохранением в базу
+    # Преобразуем API в JSON-строку перед сохранением в базу
     allowed_api_json = json.dumps([api.value for api in allowed_api])
 
     # Только администратор может добавлять пользователей
