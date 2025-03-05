@@ -13,6 +13,7 @@ from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Depends, Req
 from models import FaceNet, FaceData, QR
 from fastapi.responses import JSONResponse
 from starlette_exporter import PrometheusMiddleware, handle_metrics  
+from face_processing import detector, embedder
 
 # Импорт общих функций для работы с изображениями и эмбеддингами
 from face_processing import (
@@ -81,6 +82,15 @@ async def global_exception_handler(request: Request, exc: Exception):
 @app.on_event("startup")
 async def on_startup():
     try:
+
+        # Прогрев MTCNN (детекция лица)
+        dummy_face = np.random.rand(160, 160, 3).astype("uint8")
+        _ = detector.detect_faces(dummy_face)  # Холостой прогон
+
+        # Прогрев модели FaceNet
+        dummy_embedding = np.random.rand(160, 160, 3).astype("float32")
+        _ = embedder.embeddings([dummy_embedding])
+
         # Загружаем эмбеддинги из БД и строим Faiss-индекс
         await load_embeddings_on_startup()
         logger.info("Приложение запущено.")
