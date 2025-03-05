@@ -314,27 +314,10 @@ async def compare_face_qr(
             "patient_id": None,
             "created_at": None
         })
-
-from pydantic import BaseModel
-from typing import Optional
-from datetime import datetime
-
-# Модель для тела POST-запроса
-class FilterParams(BaseModel):
-    start_date: Optional[str] = None
-    end_date: Optional[str] = None
-    hospital_id: Optional[str] = None
-    patient_id: Optional[str] = None
-
-@app.post("/get-face-data/")
-async def get_face_data(
-    request: Request,
-    filters: FilterParams,
-    user: dict = Depends(get_current_user)
-):
-    await check_permission(user, request)
-
-    def validate_date(date_str: str) -> str:
+    
+# Функция валидации даты
+def validate_date(date_str: Optional[str]) -> Optional[str]:
+    if date_str:
         try:
             dt = datetime.strptime(date_str, "%Y-%m-%d")
             return dt.strftime("%Y-%m-%d")
@@ -343,20 +326,28 @@ async def get_face_data(
                 status_code=400,
                 detail=f"Неверный формат даты: {date_str}. Используйте YYYY-MM-DD"
             )
+    return None
 
-    start_date = filters.start_date
-    end_date = filters.end_date
+@app.post("/get-face-data/")
+async def get_face_data(
+    request: Request,
+    start_date: Optional[str] = Form(None),
+    end_date: Optional[str] = Form(None),
+    hospital_id: Optional[str] = Form(None),
+    patient_id: Optional[str] = Form(None),
+    user: dict = Depends(get_current_user),
+):
+    await check_permission(user, request)
 
-    if start_date:
-        start_date = validate_date(start_date)
-    if end_date:
-        end_date = validate_date(end_date)
+    # Валидация даты
+    start_date = validate_date(start_date)
+    end_date = validate_date(end_date)
 
     query_filters = {}
-    if filters.hospital_id:
-        query_filters["hospital_id"] = filters.hospital_id
-    if filters.patient_id:
-        query_filters["patient_id"] = filters.patient_id
+    if hospital_id:
+        query_filters["hospital_id"] = hospital_id
+    if patient_id:
+        query_filters["patient_id"] = patient_id
     if start_date and end_date:
         query_filters["timestamp__range"] = [start_date + " 00:00:00", end_date + " 23:59:59"]
     elif start_date:
