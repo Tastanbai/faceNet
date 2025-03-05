@@ -315,13 +315,21 @@ async def compare_face_qr(
             "created_at": None
         })
 
-@app.get("/get-face-data/")
+from pydantic import BaseModel
+from typing import Optional
+from datetime import datetime
+
+# Модель для тела POST-запроса
+class FilterParams(BaseModel):
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None
+    hospital_id: Optional[str] = None
+    patient_id: Optional[str] = None
+
+@app.post("/get-face-data/")
 async def get_face_data(
     request: Request,
-    start_date: Optional[str] = Query(None, description="Начальная дата (YYYY-MM-DD)"),
-    end_date: Optional[str] = Query(None, description="Конечная дата (YYYY-MM-DD)"),
-    hospital_id: Optional[str] = Query(None, description="ID больницы"),
-    patient_id: Optional[str] = Query(None, description="ID пациента"),
+    filters: FilterParams,
     user: dict = Depends(get_current_user)
 ):
     await check_permission(user, request)
@@ -336,16 +344,19 @@ async def get_face_data(
                 detail=f"Неверный формат даты: {date_str}. Используйте YYYY-MM-DD"
             )
 
+    start_date = filters.start_date
+    end_date = filters.end_date
+
     if start_date:
         start_date = validate_date(start_date)
     if end_date:
         end_date = validate_date(end_date)
 
     query_filters = {}
-    if hospital_id:
-        query_filters["hospital_id"] = hospital_id
-    if patient_id:
-        query_filters["patient_id"] = patient_id
+    if filters.hospital_id:
+        query_filters["hospital_id"] = filters.hospital_id
+    if filters.patient_id:
+        query_filters["patient_id"] = filters.patient_id
     if start_date and end_date:
         query_filters["timestamp__range"] = [start_date + " 00:00:00", end_date + " 23:59:59"]
     elif start_date:
