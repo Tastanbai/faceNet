@@ -80,9 +80,12 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 @app.on_event("startup")
 async def on_startup():
-    # Загружаем эмбеддинги из БД и строим Faiss-индекс
-    await load_embeddings_on_startup()
-    logger.info("Приложение запущено.")
+    try:
+        # Загружаем эмбеддинги из БД и строим Faiss-индекс
+        await load_embeddings_on_startup()
+        logger.info("Приложение запущено.")
+    except Exception as e:
+        logger.error(f"Ошибка при старте: {e}")
 
 @app.on_event("shutdown")
 async def on_shutdown():

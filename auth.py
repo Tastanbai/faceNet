@@ -96,13 +96,22 @@ def get_current_user(token: str = Depends(oauth2_scheme)):
 # Проверка прав
 async def check_permission(user: dict, request: Request):
     allowed_api_str = user.get("allowed_api", "[]")
-    try:
-        allowed_api = json.loads(allowed_api_str)
-    except json.JSONDecodeError:
-        raise HTTPException(status_code=500, detail="Ошибка в формате allowed_api")
+    
+    # Декодируем JSON только если строка
+    if isinstance(allowed_api_str, str):
+        try:
+            allowed_api = json.loads(allowed_api_str)
+        except json.JSONDecodeError:
+            raise HTTPException(status_code=500, detail="Ошибка в формате allowed_api")
+    elif isinstance(allowed_api_str, list):
+        allowed_api = allowed_api_str
+    else:
+        raise HTTPException(status_code=500, detail="Некорректный формат allowed_api")
 
-    api_name = request.scope["path"].lstrip("/")
+    # Убираем лишние слэши для сравнения
+    api_name = request.scope["path"].strip("/")
+    allowed_api = [api.strip("/") for api in allowed_api]
+
     if "*" in allowed_api or api_name in allowed_api:
         return
     raise HTTPException(status_code=403, detail=f"Нет доступа к API {api_name}")
-

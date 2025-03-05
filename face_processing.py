@@ -1,4 +1,7 @@
 import os
+os.environ["TF_ENABLE_ONEDNN_OPTS"] = "0" 
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"  # Скрывает ненужные предупреждения
+
 import uuid
 import base64
 import cv2
