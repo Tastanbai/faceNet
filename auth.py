@@ -1,34 +1,25 @@
+# auth.py
 import json
-from fastapi import APIRouter, Depends, HTTPException, Request, status, Form
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-import mysql.connector
 from passlib.context import CryptContext
 from datetime import datetime, timedelta
 import jwt
-
 import os
+
+from models import User  # <-- добавляем
+from tortoise.exceptions import DoesNotExist  # <-- для отлова
 from dotenv import load_dotenv
 
 load_dotenv()
 
-# Получаем настройки из переменных окружения
 SECRET_KEY = os.getenv("SECRET_KEY")
 ALGORITHM = os.getenv("ALGORITHM")
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES"))
 
 router = APIRouter()
 
-DB_CONFIG = {
-    "host": os.getenv("DB_HOST"),
-    "user": os.getenv("DB_USER"),
-    "password": os.getenv("DB_PASSWORD"),
-    "database": os.getenv("DB_DATABASE"),
-    "port": int(os.getenv("DB_PORT")),
-}
-
-# Хеширование паролей
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
 def hash_password(password: str) -> str:
@@ -48,31 +39,22 @@ def create_access_token(data: dict, expires_delta: timedelta = None):
 
 @router.post("/token")
 async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends()):
-    try:
-        conn = mysql.connector.connect(**DB_CONFIG)
-        cursor = conn.cursor(dictionary=True)
-        cursor.execute("SELECT * FROM users WHERE username = %s", (form_data.username,))
-        user = cursor.fetchone()
-        cursor.close()
-        conn.close()
+    # Через Tortoise ищем пользователя
+    user = await User.filter(username=form_data.username).first()
+    if not user or not verify_password(form_data.password, user.password):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Неверное имя пользователя или пароль",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
 
-        if not user or not verify_password(form_data.password, user["password"]):
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Неверное имя пользователя или пароль",
-                headers={"WWW-Authenticate": "Bearer"},
-            )
-
-        access_token = create_access_token(data={
-            "sub": user["username"], 
-            "is_admin": user["is_admin"],
-            "allowed_api": user["allowed_api"]
-        })
-        return {"access_token": access_token, "token_type": "bearer"}
-
-    except mysql.connector.Error as e:
-        raise HTTPException(status_code=500, detail=f"Ошибка базы данных: {e}")
-
+    # Создаём токен
+    access_token = create_access_token(data={
+        "sub": user.username,
+        "is_admin": user.is_admin,
+        "allowed_api": user.allowed_api  # Это может быть JSON-строка
+    })
+    return {"access_token": access_token, "token_type": "bearer"}
 
 def get_current_user(token: str = Depends(oauth2_scheme)):
     try:
@@ -88,16 +70,12 @@ def get_current_user(token: str = Depends(oauth2_scheme)):
 
     except jwt.ExpiredSignatureError:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Токен истек")
-
     except jwt.InvalidTokenError:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Недействительный токен")
 
-
-# Проверка прав
+# Проверка прав – без изменений
 async def check_permission(user: dict, request: Request):
     allowed_api_str = user.get("allowed_api", "[]")
-    
-    # Декодируем JSON только если строка
     if isinstance(allowed_api_str, str):
         try:
             allowed_api = json.loads(allowed_api_str)
@@ -108,7 +86,6 @@ async def check_permission(user: dict, request: Request):
     else:
         raise HTTPException(status_code=500, detail="Некорректный формат allowed_api")
 
-    # Убираем лишние слэши для сравнения
     api_name = request.scope["path"].strip("/")
     allowed_api = [api.strip("/") for api in allowed_api]
 

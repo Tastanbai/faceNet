@@ -1,5 +1,17 @@
 from tortoise import fields, models
 
+
+class User(models.Model):
+    id = fields.IntField(pk=True)
+    username = fields.CharField(max_length=255, unique=True)
+    password = fields.CharField(max_length=255)
+    is_admin = fields.BooleanField(default=False)
+    allowed_api = fields.TextField()  # Храним JSON-строку, например ["compare-face", "compare-face-qr"]
+
+    class Meta:
+        table = "users"  # Укажите, если таблица в БД тоже называется "users"
+
+
 class FaceNet(models.Model):
     id = fields.IntField(pk=True)
     patient_id = fields.CharField(max_length=255)
